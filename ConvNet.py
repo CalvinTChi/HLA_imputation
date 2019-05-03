@@ -91,11 +91,11 @@ def main(argv):
     
     yEncoder = LabelEncoder()
     yEncoder = yEncoder.fit(list(data['hla']))
-    pickle.dump(yEncoder, open(model_output + "/yEncoder.p", "wb"))
+    pickle.dump(yEncoder, open(model_output + "/yEncoder.p", "wb"), protocol = 2)
 
     tokenizer = Tokenizer(num_words = 4**N_GRAM)
     tokenizer.fit_on_texts(train.iloc[:, 0])
-    pickle.dump(tokenizer, open(model_output + "/tokenizer.p", "wb"))
+    pickle.dump(tokenizer, open(model_output + "/tokenizer.p", "wb"), protocol = 2)
 
     trainX, trainY = generate_feature_label_pair(train, tokenizer, yEncoder, MAX_SEQ_LENGTH)
     testX, testY = generate_feature_label_pair(test, tokenizer, yEncoder, MAX_SEQ_LENGTH)
