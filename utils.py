@@ -3,13 +3,25 @@ import pandas as pd
 from keras.utils import to_categorical
 from keras.preprocessing.sequence import pad_sequences
 
-def generate_feature_label_pair(data, tokenizer, yEncoder, max_seq_length):
-    X = tokenizer.texts_to_sequences(data.iloc[:, 0])
-    X = pad_sequences(X, maxlen = max_seq_length, padding='post')
-    # indicate which label to use
-    Y = data.iloc[:, 1].tolist()
-    Y = yEncoder.transform(Y)
-    Y = to_categorical(Y, num_classes = len(yEncoder.classes_))
+def train_validation_split(data, p = 0.15):
+    data.sample(frac=1)
+    n = data.shape[0]
+    validationIdx = int(round(n * p))
+    validation = data.iloc[0:validationIdx, :]
+    train = data.iloc[validationIdx:n, :]
+    return train, validation
+
+def generate_feature_label_pair(data, tokenizer, yEncoders, max_seq_length):
+    Y = []
+    X = np.zeros((data.shape[0], 8, max_seq_length))
+    for i in range(8):
+        x = tokenizer.texts_to_sequences(data.iloc[:, i])
+        X[:, i, :] = pad_sequences(x, maxlen = max_seq_length, padding='post')
+        
+        genename = data.columns[i + 8]
+        y = yEncoders[i].transform(data[genename].tolist())
+        y = to_categorical(y, num_classes = len(yEncoders[i].classes_))
+        Y.append(y)
     return X, Y
 
 def generate_n_grams(seq, n):

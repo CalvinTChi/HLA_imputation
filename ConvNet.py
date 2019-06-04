@@ -1,48 +1,65 @@
-from keras.layers import Dense, Flatten, Embedding, Conv1D, MaxPooling1D, Dropout
+from keras.layers import Dense, Flatten, Embedding, Conv1D, MaxPooling1D, Activation, Input, Dropout, concatenate, TimeDistributed, Lambda
 from keras.layers.normalization import BatchNormalization
+from keras.preprocessing.sequence import pad_sequences
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import accuracy_score
 from keras.preprocessing.text import Tokenizer
+from keras.models import Sequential, Model, load_model
 from keras.utils import to_categorical
-from keras.models import Sequential
-import keras.optimizers
-import warnings
+from keras.callbacks import EarlyStopping
 from utils import *
+import keras.optimizers
 import numpy as np
 import pandas as pd
 import pickle, os, sys, getopt
 warnings.filterwarnings("ignore")
 
-N_GRAM = 4
-EMBEDDING_DIM = 25
-BATCH_SIZE = 1024
-epochs = 3
+BATCH_SIZE = 256
+EMBEDDING_DIM = 10
+N_GRAM = 5
+MAX_NB_WORDS = 4**N_GRAM * 2
 
-def create_model(n_classes, embedding_dim = 25, n_gram = 4, max_seq_length = 800):
-    max_nb_words = 4**n_gram
-    embedding_layer = Embedding(max_nb_words + 1,
-                                embedding_dim,
-                                input_length = max_seq_length,
-                                trainable = True)
-    model = Sequential()
-    model.add(embedding_layer)
+def ConvNet(yEncoders, max_nb_words, embedding_dim = 10, max_seq_length = 500):
+    main_input = Input(shape = (8, max_seq_length), name = "main_input")
+    x = TimeDistributed(Embedding(input_dim = max_nb_words + 1,
+                                  output_dim = embedding_dim,
+                                  input_length = max_seq_length,
+                                  trainable = True))(main_input)
+    
     # convolution 1st layer
-    model.add(Conv1D(126, 10, activation = 'relu', input_shape = (embedding_dim, 1)))
-    model.add(MaxPooling1D(3))
-    model.add(BatchNormalization())
+    x = TimeDistributed(Conv1D(128, 10, activation = 'relu', input_shape = (embedding_dim, 1)))(x)
+    x = TimeDistributed(MaxPooling1D(3))(x)
+    x = TimeDistributed(BatchNormalization())(x)
     
     # convolution 2nd layer
-    model.add(Conv1D(126, 5, activation = 'relu'))
-    model.add(MaxPooling1D(3))
-    model.add(BatchNormalization())
+    x = TimeDistributed(Conv1D(64, 5, activation = 'relu'))(x)
+    x = TimeDistributed(MaxPooling1D(3))(x)
+    x = TimeDistributed(BatchNormalization())(x)
 
-    model.add(Flatten())
-    model.add(Dense(126, activation = 'relu'))
-    model.add(Dropout(rate = 0.2))
-    model.add(Dense(n_classes, activation = 'softmax'))
+    x = TimeDistributed(Flatten())(x)
+    
+    dense1 = [Lambda(lambda x: x[:, i, :])(x) for i in range(8)]
+    
+    dense2 = []
+    for i in range(8):
+        if i == 0:
+            dense2.append(concatenate([dense1[0], dense1[1]]))
+        elif i == 7:
+            dense2.append(concatenate([dense1[6], dense1[7]]))
+        else:
+            dense2.append(concatenate([dense1[i - 1], dense1[i], dense1[i + 1]]))
+    
+    dense3 = []
+    for i in range(8):
+        dense3.append(Dense(64, activation = 'relu')(dense2[i]))
+    
+    outputs = []
+    for i in range(8):
+        outputs.append(Dense(len(yEncoders[i].classes_), activation = 'softmax')(dense3[i]))
+    
+    model = Model(inputs = main_input, outputs = outputs)
     model.compile(loss = 'categorical_crossentropy',
                  optimizer = keras.optimizers.Adam(lr=0.001), 
-                 metrics = ['accuracy'])
+                 metrics=['accuracy'])
     return model
 
 def main(argv):
@@ -75,42 +92,45 @@ def main(argv):
     if not os.path.exists(result_output):
         os.makedirs(result_output)
 
-    train = pd.read_table(train_file, delimiter=" ", header = 0)
-    test = pd.read_table(test_file, delimiter=" ", header = 0)
+    train = pd.read_csv(train_file, delimiter=" ", header = 0)
+    test = pd.read_csv(test_file, delimiter=" ", header = 0)
 
-    # preprocess the data
-    data = pd.concat([train, test])
+    # generate n-grams
+    MAX_SEQ_LENGTH = 0
+    for i in range(8):
+        train.iloc[:, i] = [generate_n_grams(list(s), N_GRAM) for s in trian.iloc[:, i]]
+        MAX_SEQ_LENGTH = max(max([len(s) for s in train.iloc[:, i]]), MAX_SEQ_LENGTH)
 
-    train['sequences'] = [list(s) for s in train['sequences']]
-    train['sequences'] = [generate_n_grams(s, N_GRAM) for s in train['sequences']]
-
-    test['sequences'] = [list(s) for s in test['sequences']]
-    test['sequences'] = [generate_n_grams(s, N_GRAM) for s in test['sequences']]
-
-    MAX_SEQ_LENGTH = max([len(s) for s in train['sequences']])
-    
-    yEncoder = LabelEncoder()
-    yEncoder = yEncoder.fit(list(data['hla']))
-    pickle.dump(yEncoder, open(model_output + "/yEncoder.p", "wb"), protocol = 2)
-
-    tokenizer = Tokenizer(num_words = 4**N_GRAM)
-    tokenizer.fit_on_texts(train.iloc[:, 0])
+    # Map words and labels to numbers
+    n_grams = []
+    for i in range(8):
+        n_grams += train.iloc[:, i].tolist()
+    tokenizer = Tokenizer(num_words = MAX_NB_WORDS)
+    tokenizer.fit_on_texts(n_grams)
     pickle.dump(tokenizer, open(model_output + "/tokenizer.p", "wb"), protocol = 2)
 
-    trainX, trainY = generate_feature_label_pair(train, tokenizer, yEncoder, MAX_SEQ_LENGTH)
-    testX, testY = generate_feature_label_pair(test, tokenizer, yEncoder, MAX_SEQ_LENGTH)
+    data = pd.concat([train, test])
+    dataY = data.iloc[:, 8:16]
+    yEncoders = [LabelEncoder() for i in range(8)]
+    for i in range(8):
+        genename = dataY.columns[i]
+        yEncoders[i].fit(dataY[genename])
+    pickle.dump(yEncoder, open(model_output + "/yEncoder.p", "wb"), protocol = 2)
 
-    # train model
-    model = create_model(n_classes = len(yEncoder.classes_), embedding_dim = EMBEDDING_DIM, n_gram = N_GRAM, max_seq_length = MAX_SEQ_LENGTH)
-    model.fit(trainX, trainY, epochs = epochs, batch_size = BATCH_SIZE)
-    model.save(model_output + "/convnet0.h5")
+    # Generate training and test datasets
+    train, validation = train_validation_split(data)
+    trainX, trainY = generate_feature_label_pair(train, tokenizer, yEncoders, MAX_SEQ_LENGTH)
+    validationX, validationY = generate_feature_label_pair(validation, tokenizer, yEncoders, MAX_SEQ_LENGTH)
+
+    model = ConvNet(yEncoders, max_nb_words = MAX_NB_WORDS, embedding_dim = 10, max_seq_length = MAX_SEQ_LENGTH)
+    print(model.summary())
 
     # evaluate on test set
-    testY = np.argmax(testY, axis = 1)
-    predY = model.predict_classes(testX)
-    print("Test accuracy: ", round(accuracy_score(testY, predY), 4))
-    recallDf = calculate_recall(predY, testY, yEncoder)
-    recallDf.to_csv(result_output + "/recall_by_allele0.csv", index = True)
+    #testY = np.argmax(testY, axis = 1)
+    #predY = model.predict_classes(testX)
+    #print("Test accuracy: ", round(accuracy_score(testY, predY), 4))
+    #recallDf = calculate_recall(predY, testY, yEncoder)
+    #recallDf.to_csv(result_output + "/recall_by_allele0.csv", index = True)
 
 if __name__ == "__main__":
     try:
@@ -119,5 +139,4 @@ if __name__ == "__main__":
         print("Usage: ConvNet.py -t <train_file> -v <test_file> -m <model directory> -r <result directory>")
         sys.exit(2)
     main(sys.argv[1:])
-
 
