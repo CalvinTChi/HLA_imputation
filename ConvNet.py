@@ -11,7 +11,7 @@ import keras.optimizers
 import numpy as np
 import pandas as pd
 import pickle, os, sys, getopt
-warnings.filterwarnings("ignore")
+#warnings.filterwarnings("ignore")
 
 BATCH_SIZE = 256
 EMBEDDING_DIM = 10
@@ -98,7 +98,8 @@ def main(argv):
     # generate n-grams
     MAX_SEQ_LENGTH = 0
     for i in range(8):
-        train.iloc[:, i] = [generate_n_grams(list(s), N_GRAM) for s in trian.iloc[:, i]]
+        train.iloc[:, i] = [generate_n_grams(list(s), N_GRAM) for s in train.iloc[:, i]]
+        test.iloc[:, i] = [generate_n_grams(list(s), N_GRAM) for s in test.iloc[:, i]]
         MAX_SEQ_LENGTH = max(max([len(s) for s in train.iloc[:, i]]), MAX_SEQ_LENGTH)
 
     # Map words and labels to numbers
@@ -115,19 +116,26 @@ def main(argv):
     for i in range(8):
         genename = dataY.columns[i]
         yEncoders[i].fit(dataY[genename])
-    pickle.dump(yEncoder, open(model_output + "/yEncoder.p", "wb"), protocol = 2)
+    pickle.dump(yEncoders, open(model_output + "/yEncoder.p", "wb"), protocol = 2)
 
     # Generate training and test datasets
-    train, validation = train_validation_split(data)
+    train, validation = train_validation_split(train, p = 0.10)
     trainX, trainY = generate_feature_label_pair(train, tokenizer, yEncoders, MAX_SEQ_LENGTH)
     validationX, validationY = generate_feature_label_pair(validation, tokenizer, yEncoders, MAX_SEQ_LENGTH)
+    testX, testY = generate_feature_label_pair(test, tokenizer, yEncoders, MAX_SEQ_LENGTH)
 
+    overfitCallback = EarlyStopping(monitor='val_loss',
+                                min_delta=0,
+                                patience=1,
+                                verbose=0, mode='auto')
     model = ConvNet(yEncoders, max_nb_words = MAX_NB_WORDS, embedding_dim = 10, max_seq_length = MAX_SEQ_LENGTH)
-    print(model.summary())
+    model.fit(trainX, trainY, epochs = 100, batch_size = BATCH_SIZE, 
+          validation_data = (validationX, validationY), callbacks=[overfitCallback])
 
     # evaluate on test set
     #testY = np.argmax(testY, axis = 1)
-    #predY = model.predict_classes(testX)
+    #predY = model.predict(testX)
+    #predY = np.argmax(testY, axis = 1)
     #print("Test accuracy: ", round(accuracy_score(testY, predY), 4))
     #recallDf = calculate_recall(predY, testY, yEncoder)
     #recallDf.to_csv(result_output + "/recall_by_allele0.csv", index = True)
