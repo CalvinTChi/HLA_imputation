@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import sys
 from keras.utils import to_categorical
 from keras.preprocessing.sequence import pad_sequences
 
@@ -31,19 +32,29 @@ def generate_n_grams(seq, n):
         grams.append("".join(seq[i:i + n]))
     return grams
 
+def accuracy_score(classY, classPred):
+    num_correct = 0
+    for i in range(len(classY)):
+        num_correct += np.sum(classY[i] == classPred[i])
+    return float(num_correct) / (len(classY[0]) * 8)
+
 # @param predY: list of predicted class as integers
 # @param testY: list of true class as integers
 # @yEncoder: sklearn.preprocessing.LabelEncoder is a mapping between class names and numbers
-def calculate_recall(predY, testY, yEncoder):
-    recallDf = pd.DataFrame(0, index = yEncoder.classes_,
+def calculate_recall(classY, classPred, yEncoders):
+    classes = []
+    for i in range(len(classY)):
+        classes += list(yEncoders[i].classes_)
+    recallDf = pd.DataFrame(0, index = classes,
         columns = ["number", "num_correct"])
-    testYname = yEncoder.inverse_transform(testY)
-    predYname = yEncoder.inverse_transform(predY)
-    for i in range(recallDf.shape[0]):
-        allele = yEncoder.classes_[i]
-        alleleIdx = np.where(testYname == allele)[0]
-        recallDf.loc[allele, "number"] = len(alleleIdx)
-        recallDf.loc[allele, "num_correct"] = len(np.intersect1d(alleleIdx, np.where(predYname == allele)[0]))
+    for i in range(len(classY)):
+        for j in range(len(yEncoders[i].classes_)):
+            allele = yEncoders[i].classes_[j]
+            alleleIdx = np.where(classY[i] == allele)[0]
+            recallDf.loc[allele, "number"] = len(alleleIdx)
+            recallDf.loc[allele, "num_correct"] = len(np.intersect1d(alleleIdx, np.where(classPred[i] == allele)[0]))
     #recallDf["percent"] = recallDf["num_correct"] / recallDf["number"]
     recallDf = recallDf.sort_values(by = ["number"], ascending = False)
     return recallDf
+
+    

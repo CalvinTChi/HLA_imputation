@@ -37,7 +37,7 @@ def ConvNet(yEncoders, max_nb_words, embedding_dim = 10, max_seq_length = 500):
 
     x = TimeDistributed(Flatten())(x)
     
-    dense1 = [Lambda(lambda x: x[:, i, :])(x) for i in range(8)]
+    dense1 = [Lambda(lambda x, ind: x[:, ind, :], arguments={'ind': i})(x) for i in range(8)]
     
     dense2 = []
     for i in range(8):
@@ -110,19 +110,25 @@ def main(argv):
     tokenizer.fit_on_texts(n_grams)
     pickle.dump(tokenizer, open(model_output + "/tokenizer.p", "wb"), protocol = 2)
 
-    data = pd.concat([train, test])
-    dataY = data.iloc[:, 8:16]
+    trainY = train.iloc[:, 8:16]
     yEncoders = [LabelEncoder() for i in range(8)]
     for i in range(8):
-        genename = dataY.columns[i]
-        yEncoders[i].fit(dataY[genename])
-    pickle.dump(yEncoders, open(model_output + "/yEncoder.p", "wb"), protocol = 2)
-
+        genename = trainY.columns[i]
+        yEncoders[i].fit(trainY[genename])
+    pickle.dump(yEncoders, open(model_output + "/yEncoders.p", "wb"), protocol = 2)
+    
     # Generate training and test datasets
     train, validation = train_validation_split(train, p = 0.10)
     trainX, trainY = generate_feature_label_pair(train, tokenizer, yEncoders, MAX_SEQ_LENGTH)
     validationX, validationY = generate_feature_label_pair(validation, tokenizer, yEncoders, MAX_SEQ_LENGTH)
-    testX, testY = generate_feature_label_pair(test, tokenizer, yEncoders, MAX_SEQ_LENGTH)
+    
+    testY = []
+    testX = np.zeros((test.shape[0], 8, MAX_SEQ_LENGTH))
+    for i in range(8):
+        x = tokenizer.texts_to_sequences(test.iloc[:, i])
+        testX[:, i, :] = pad_sequences(x, maxlen = MAX_SEQ_LENGTH, padding='post')
+        genename = test.columns[i + 8]
+        testY.append(test[genename])
 
     overfitCallback = EarlyStopping(monitor='val_loss',
                                 min_delta=0,
@@ -132,13 +138,19 @@ def main(argv):
     model.fit(trainX, trainY, epochs = 100, batch_size = BATCH_SIZE, 
           validation_data = (validationX, validationY), callbacks=[overfitCallback])
 
+    predY = model.predict(testX)
+
     # evaluate on test set
-    #testY = np.argmax(testY, axis = 1)
-    #predY = model.predict(testX)
-    #predY = np.argmax(testY, axis = 1)
-    #print("Test accuracy: ", round(accuracy_score(testY, predY), 4))
-    #recallDf = calculate_recall(predY, testY, yEncoder)
-    #recallDf.to_csv(result_output + "/recall_by_allele0.csv", index = True)
+    classPred = []
+    for i in range(len(testY)):
+        numPredY = np.argmax(predY[i], axis = 1)
+        predYname = yEncoders[i].inverse_transform(numPredY)
+        classPred.append(predYname)
+    
+    print("Test accuracy: ", round(accuracy_score(classY, classPred), 4))
+
+    recallDf = calculate_recall(predY, testY, yEncoders)
+    recallDf.to_csv(result_output + "/recall_by_allele0.csv", index = True)
 
 if __name__ == "__main__":
     try:
