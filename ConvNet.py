@@ -137,10 +137,10 @@ def main(argv):
     model = ConvNet(yEncoders, max_nb_words = MAX_NB_WORDS, embedding_dim = 10, max_seq_length = MAX_SEQ_LENGTH)
     model.fit(trainX, trainY, epochs = 100, batch_size = BATCH_SIZE, 
           validation_data = (validationX, validationY), callbacks=[overfitCallback])
-
-    predY = model.predict(testX)
+    model.save(model_output + "/convnet.h5")
 
     # evaluate on test set
+    predY = model.predict(testX)
     classPred = []
     for i in range(len(testY)):
         numPredY = np.argmax(predY[i], axis = 1)
