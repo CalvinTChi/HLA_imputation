@@ -14,7 +14,7 @@ import pandas as pd
 import pickle, os, sys, getopt
 warnings.filterwarnings("ignore")
 
-N_GRAM = 4
+N_GRAM = 5
 B = 1000
 
 def main(argv):
@@ -38,32 +38,43 @@ def main(argv):
         elif opt == "-r":
             result_directory = arg
 
-    model = load_model(model_directory + "/convnet0.h5")
+    model = load_model(model_directory + "/convnet.h5")
     tokenizer = pickle.load(open(model_directory + "/tokenizer.p", "rb"))
-    yEncoder = pickle.load(open(model_directory + "/yEncoder.p", "rb"))
+    yEncoders = pickle.load(open(model_directory + "/yEncoders.p", "rb"))
 
     max_seq_length = int_shape(model.input)[1]
 
     test = pd.read_csv(test_file, delimiter=" ", header = 0)
+    # generate n-grams
+    for i in range(8):
+        test.iloc[:, i] = [generate_n_grams(list(s), N_GRAM) for s in test.iloc[:, i]]
 
-    test['sequences'] = [list(s) for s in test['sequences']]
-    test['sequences'] = [generate_n_grams(s, N_GRAM) for s in test['sequences']]
-
-    testX, testY = generate_feature_label_pair(test, tokenizer, yEncoder, max_seq_length)
-
+    # manipulate test dataset to be in the correct format
+    testY = []
+    testX = np.zeros((test.shape[0], 8, max_seq_length))
+    for i in range(8):
+        x = tokenizer.texts_to_sequences(test.iloc[:, i])
+        testX[:, i, :] = pad_sequences(x, maxlen = max_seq_length, padding='post')
+        genename = test.columns[i + 8]
+        testY.append(test[genename])
+    
     recallDfs = []
 
     for i in range(B):
         print("bootstrap sample " + str(i + 1))
         sampleIdx = np.random.choice(testX.shape[0], replace=True, size = testX.shape[0])
     
-        testXb = testX[sampleIdx, :]
-        testYb = testY[sampleIdx, :]
-        testYb = np.argmax(testYb, axis=1)
+        testXb = testX[sampleIdx, :, :]
+        testYb = [label[sampleIdx] for label in testY]
+        predYb = model.predict(testXb)
+
+        classPred = []
+        for i in range(len(testY)):
+            numPredY = np.argmax(predY[i], axis = 1)
+            predYname = yEncoders[i].inverse_transform(numPredY)
+            classPred.append(predYname)
         
-        predYb = model.predict_classes(testXb)
-        
-        recallDf = calculate_recall(predYb, testYb, yEncoder)
+        recallDf = calculate_recall(testY, classPred, yEncoders)
         recallDf.rename(columns = {'number':'number' + str(i + 1), 'num_correct': 'num_correct' + str(i + 1)}, 
                      inplace=True)
     
