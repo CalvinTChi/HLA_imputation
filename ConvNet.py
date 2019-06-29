@@ -132,7 +132,7 @@ def main(argv):
 
     overfitCallback = EarlyStopping(monitor='val_loss',
                                 min_delta=0,
-                                patience=1,
+                                patience=2,
                                 verbose=0, mode='auto')
     model = ConvNet(yEncoders, max_nb_words = MAX_NB_WORDS, embedding_dim = 10, max_seq_length = MAX_SEQ_LENGTH)
     model.fit(trainX, trainY, epochs = 100, batch_size = BATCH_SIZE, 
@@ -147,9 +147,9 @@ def main(argv):
         predYname = yEncoders[i].inverse_transform(numPredY)
         classPred.append(predYname)
     
-    print("Test accuracy: ", round(accuracy_score(classY, classPred), 4))
+    print("Test accuracy: {0}".format(round(accuracy_score(testY, classPred), 4)))
 
-    recallDf = calculate_recall(predY, testY, yEncoders)
+    recallDf = calculate_recall(testY, classPred, yEncoders)
     recallDf.to_csv(result_output + "/recall_by_allele0.csv", index = True)
 
 if __name__ == "__main__":

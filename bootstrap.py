@@ -1,7 +1,6 @@
 from keras.layers import Dense, Flatten, Embedding, Conv1D, MaxPooling1D, Dropout
 from keras.layers.normalization import BatchNormalization
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import accuracy_score
 from keras.preprocessing.text import Tokenizer
 from keras.utils import to_categorical
 from keras.models import Sequential, load_model
@@ -42,7 +41,7 @@ def main(argv):
     tokenizer = pickle.load(open(model_directory + "/tokenizer.p", "rb"))
     yEncoders = pickle.load(open(model_directory + "/yEncoders.p", "rb"))
 
-    max_seq_length = int_shape(model.input)[1]
+    max_seq_length = int_shape(model.input)[2]
 
     test = pd.read_csv(test_file, delimiter=" ", header = 0)
     # generate n-grams
@@ -70,7 +69,7 @@ def main(argv):
 
         classPred = []
         for i in range(len(testY)):
-            numPredY = np.argmax(predY[i], axis = 1)
+            numPredY = np.argmax(predYb[i], axis = 1)
             predYname = yEncoders[i].inverse_transform(numPredY)
             classPred.append(predYname)
         
