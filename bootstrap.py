@@ -58,6 +58,8 @@ def main(argv):
         testY.append(test[genename])
     
     recallDfs = []
+    recallDfB = pd.read_csv(result_directory + "/recall_by_allele0.csv", index_col = 0)
+    recallDfB.to_csv(result_directory + "/recall_by_alleleB.csv", index = True)
 
     for i in range(B):
         print("bootstrap sample " + str(i + 1))
@@ -68,23 +70,30 @@ def main(argv):
         predYb = model.predict(testXb)
 
         classPred = []
-        for i in range(len(testY)):
-            numPredY = np.argmax(predYb[i], axis = 1)
-            predYname = yEncoders[i].inverse_transform(numPredY)
+        for j in range(len(testY)):
+            numPredY = np.argmax(predYb[j], axis = 1)
+            predYname = yEncoders[j].inverse_transform(numPredY)
             classPred.append(predYname)
         
-        recallDf = calculate_recall(testY, classPred, yEncoders)
+        recallDf = calculate_recall(testYb, classPred, yEncoders)
         recallDf.rename(columns = {'number':'number' + str(i + 1), 'num_correct': 'num_correct' + str(i + 1)}, 
                      inplace=True)
     
         recallDfs.append(recallDf)
 
-    recallDf_all = pd.concat(recallDfs, axis = 1)
+        if (i + 1) % 100 == 0:
+            recallDf_all = pd.concat(recallDfs, axis = 1)
+            recallDfB = pd.read_csv(result_directory + "/recall_by_alleleB.csv", index_col = 0)
+            recallDf_all = pd.merge(recallDfB, recallDf_all, left_index = True, right_index = True)
+            recallDf_all.to_csv(result_directory + "/recall_by_alleleB.csv", index = True)
+            recallDfs = []
+
+    #recallDf_all = pd.concat(recallDfs, axis = 1)
     
     # write result, along with performance on origin test dataset
-    recallDf0 = pd.read_csv(result_directory + "/recall_by_allele0.csv", index_col = 0)
-    recallDf_all = pd.merge(recallDf0, recallDf_all, left_index = True, right_index = True)
-    recallDf_all.to_csv(result_directory + "/recall_by_alleleB.csv", index = True)
+    #recallDf0 = pd.read_csv(result_directory + "/recall_by_allele0.csv", index_col = 0)
+    #recallDf_all = pd.merge(recallDf0, recallDf_all, left_index = True, right_index = True)
+    #recallDf_all.to_csv(result_directory + "/recall_by_alleleB.csv", index = True)
 
 if __name__ == "__main__":
     try:
