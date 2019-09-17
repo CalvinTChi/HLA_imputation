@@ -3,7 +3,7 @@ from keras.layers.normalization import BatchNormalization
 from keras.preprocessing.sequence import pad_sequences
 from sklearn.preprocessing import LabelEncoder
 from keras.preprocessing.text import Tokenizer
-from keras.models import Sequential, Model, load_model
+from keras.models import Model
 from keras.utils import to_categorical
 from keras.callbacks import EarlyStopping
 from utils import *
@@ -149,7 +149,7 @@ def main(argv):
     
     print("Test accuracy: {0}".format(round(accuracy_score(testY, classPred), 4)))
 
-    recallDf = calculate_recall(testY, classPred, yEncoders)
+    recallDf = calculate_recall(testY, classPred)
     recallDf.to_csv(result_output + "/recall_by_allele0.csv", index = True)
 
 if __name__ == "__main__":

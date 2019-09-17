@@ -41,15 +41,16 @@ def accuracy_score(classY, classPred):
 # @param predY: list of predicted class as integers
 # @param testY: list of true class as integers
 # @yEncoder: sklearn.preprocessing.LabelEncoder is a mapping between class names and numbers
-def calculate_recall(classY, classPred, yEncoders):
+def calculate_recall(classY, classPred):
     classes = []
-    for i in range(len(classY)):
-        classes += list(yEncoders[i].classes_)
+    for i in range(len(testY)):
+        classes += list(np.unique(testY[i]))
     recallDf = pd.DataFrame(0, index = classes,
         columns = ["number", "num_correct"])
-    for i in range(len(classY)):
-        for j in range(len(yEncoders[i].classes_)):
-            allele = yEncoders[i].classes_[j]
+    for i in range(len(testY)):
+        alleleClass = np.unique(testY[i])
+        for j in range(len(alleleClass)):
+            allele = alleleClass[j]
             alleleIdx = np.where(classY[i] == allele)[0]
             recallDf.loc[allele, "number"] = len(alleleIdx)
             recallDf.loc[allele, "num_correct"] = len(np.intersect1d(alleleIdx, np.where(classPred[i] == allele)[0]))

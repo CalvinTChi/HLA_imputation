@@ -75,7 +75,7 @@ def main(argv):
             predYname = yEncoders[j].inverse_transform(numPredY)
             classPred.append(predYname)
         
-        recallDf = calculate_recall(testYb, classPred, yEncoders)
+        recallDf = calculate_recall(testYb, classPred)
         recallDf.rename(columns = {'number':'number' + str(i + 1), 'num_correct': 'num_correct' + str(i + 1)}, 
                      inplace=True)
     
