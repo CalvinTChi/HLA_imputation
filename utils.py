@@ -46,7 +46,7 @@ def calculate_recall(classY, classPred):
     for i in range(len(testY)):
         classes += list(np.unique(testY[i]))
     recallDf = pd.DataFrame(0, index = classes,
-        columns = ["number", "num_correct"])
+        columns = ["number", "number_correct"])
     for i in range(len(testY)):
         alleleClass = np.unique(testY[i])
         for j in range(len(alleleClass)):
