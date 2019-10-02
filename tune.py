@@ -62,14 +62,6 @@ def main():
     trainX, trainY = generate_feature_label_pair(train, tokenizer, yEncoders, max_nb_words)
     validationX, validationY = generate_feature_label_pair(validation, tokenizer, yEncoders, max_nb_words)
     devX, devY = generate_feature_label_pair(dev, tokenizer, yEncoders, max_nb_words)
-    
-    testY = []
-    testX = np.zeros((test.shape[0], 8, max_seq_length))
-    for i in range(8):
-        x = tokenizer.texts_to_sequences(test.iloc[:, i])
-        testX[:, i, :] = pad_sequences(x, maxlen = max_seq_length, padding='post')
-        genename = test.columns[i + 8]
-        testY.append(test[genename])
 
     # setup save file
     result_columns = ["embedding_dim", "batch_size", "n_1", "n_2", "n_3", "stride1", "stride2", 
@@ -112,7 +104,7 @@ def main():
         save_df.loc[i, "max_nb_words"] = hyperparameters["max_nb_words"]
         save_df.loc[i, "max_seq_length"] = hyperparameters["max_seq_length"]
         save_df.loc[i, "validation_accuracy"] = validation_accuracy
-        
+    save_df.sort_values(by = ["validation_accuracy"], ascending = False, inplace = True)
     save_df.to_csv(result_file, index=False)
 
 if __name__ == "__main__":
