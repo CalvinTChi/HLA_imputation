@@ -18,7 +18,27 @@ EMBEDDING_DIM = 10
 N_GRAM = 5
 MAX_NB_WORDS = 4**N_GRAM * 2
 
-def ConvNet(yEncoders, max_nb_words, embedding_dim = 10, max_seq_length = 500):
+def ConvNet(yEncoders, hyperparameters):
+    '''
+    Create ConvNet model
+    
+    Arguments:
+        yEncoders -- fitted sklearn LabelEncoder that provides 1-to-1 mapping between HLA alleles and numbers
+        hyperparameters -- dictionary of hyperparameters for the ConvNet
+    Returns:
+        keras Model class for ConvNet
+    '''
+    max_seq_length = hyperparameters["max_seq_length"]
+    max_nb_words = hyperparameters["max_nb_words"]
+    dropout = hyperparameters["dropout"]
+    maxpool = hyperparameters["maxpool"]
+    stride1 = hyperparameters["stride1"]
+    stride2 = hyperparameters["stride2"]
+    n_1 = hyperparameters["n_1"]
+    n_2 = hyperparameters["n_2"]
+    n_3 = hyperparameters["n_3"]
+    embedding_dim = hyperparameters["embedding_dim"]
+
     main_input = Input(shape = (8, max_seq_length), name = "main_input")
     x = TimeDistributed(Embedding(input_dim = max_nb_words + 1,
                                   output_dim = embedding_dim,
@@ -26,16 +46,18 @@ def ConvNet(yEncoders, max_nb_words, embedding_dim = 10, max_seq_length = 500):
                                   trainable = True))(main_input)
     
     # convolution 1st layer
-    x = TimeDistributed(Conv1D(128, 10, activation = 'relu', input_shape = (embedding_dim, 1)))(x)
-    x = TimeDistributed(MaxPooling1D(3))(x)
     x = TimeDistributed(BatchNormalization())(x)
+    x = TimeDistributed(Conv1D(n_1, stride1, activation = 'relu', input_shape = (embedding_dim, 1)))(x)
+    x = TimeDistributed(MaxPooling1D(maxpool))(x)
     
     # convolution 2nd layer
-    x = TimeDistributed(Conv1D(64, 5, activation = 'relu'))(x)
-    x = TimeDistributed(MaxPooling1D(3))(x)
     x = TimeDistributed(BatchNormalization())(x)
+    x = TimeDistributed(Conv1D(n_2, stride2, activation = 'relu'))(x)
+    x = TimeDistributed(MaxPooling1D(maxpool))(x)
 
     x = TimeDistributed(Flatten())(x)
+    x = TimeDistributed(BatchNormalization())(x)
+    x = TimeDistributed(Dropout(rate = dropout))(x)
     
     dense1 = [Lambda(lambda x, ind: x[:, ind, :], arguments={'ind': i})(x) for i in range(8)]
     
@@ -50,7 +72,7 @@ def ConvNet(yEncoders, max_nb_words, embedding_dim = 10, max_seq_length = 500):
     
     dense3 = []
     for i in range(8):
-        dense3.append(Dense(64, activation = 'relu')(dense2[i]))
+        dense3.append(Dropout(rate = dropout)(Dense(n_3, activation = 'relu')(dense2[i])))
     
     outputs = []
     for i in range(8):
@@ -130,12 +152,15 @@ def main(argv):
         genename = test.columns[i + 8]
         testY.append(test[genename])
 
+    hyperparameters = {"max_seq_length": MAX_SEQ_LENGTH, "max_nb_words": MAX_NB_WORDS, "dropout": 0, 
+        "maxpool": 3, "stride1": 10, "stride2": 5, "n_1": 128, "n_2": 64, "stride1": 10, "stride2": 5,
+        "n_3": 64, "batch_size": batch_size}
     overfitCallback = EarlyStopping(monitor='val_loss',
                                 min_delta=0,
                                 patience=2,
                                 verbose=0, mode='auto')
-    model = ConvNet(yEncoders, max_nb_words = MAX_NB_WORDS, embedding_dim = 10, max_seq_length = MAX_SEQ_LENGTH)
-    model.fit(trainX, trainY, epochs = 100, batch_size = BATCH_SIZE, 
+    model = ConvNet(yEncoders, hyperparameters)
+    model.fit(trainX, trainY, epochs = 100, batch_size = hyperparameters["batch_size"], 
           validation_data = (validationX, validationY), callbacks=[overfitCallback])
     model.save(model_output + "/convnet.h5")
 
