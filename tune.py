@@ -28,7 +28,7 @@ dropouts = [0.5, 0.3, 0.1]
 # other inputs
 train_file = "../data/T1DGC_REF/train/T1DGC_REF_Train.txt"
 result_file = "../results/T1DGC/ConvNet/tune.csv"
-n_searches = 3
+n_searches = 100
 n_gram = 5
 max_nb_words = 4**n_gram * 2
 
@@ -57,11 +57,18 @@ def main():
         yEncoders[i].fit(trainY[genename])
 
     # Generate training, dev, and validation datasets
-    train, validation = train_validation_split(train, p = 0.10)
-    train, dev = train_validation_split(train, p = 0.10)
-    trainX, trainY = generate_feature_label_pair(train, tokenizer, yEncoders, max_nb_words)
-    validationX, validationY = generate_feature_label_pair(validation, tokenizer, yEncoders, max_nb_words)
-    devX, devY = generate_feature_label_pair(dev, tokenizer, yEncoders, max_nb_words)
+    train, validation = train_validation_split(train, p = 0.20)
+    train, dev = train_validation_split(train, p = 0.15)
+    trainX, trainY = generate_feature_label_pair(train, tokenizer, yEncoders, max_seq_length)
+    devX, devY = generate_feature_label_pair(dev, tokenizer, yEncoders, max_seq_length)
+
+    validationY = []
+    validationX = np.zeros((validation.shape[0], 8, max_seq_length))
+    for i in range(8):
+        x = tokenizer.texts_to_sequences(validation.iloc[:, i])
+        validationX[:, i, :] = pad_sequences(x, maxlen = max_seq_length, padding='post')
+        genename = validation.columns[i + 8]
+        validationY.append(validation[genename])
 
     # setup save file
     result_columns = ["embedding_dim", "batch_size", "n_1", "n_2", "n_3", "stride1", "stride2", 
@@ -83,13 +90,20 @@ def main():
                            "maxpool": np.random.choice(maxpools, 1)[0],
                            "dropout": np.random.choice(dropouts, 1)[0],
                            "max_nb_words": max_nb_words,
-                           "max_seq_length": max_seq_length}
+                           "max_seq_length": max_seq_length,
+                           "stride": 1}
 
         overfitCallback = EarlyStopping(monitor='val_loss', min_delta=0, patience=2, verbose=0, mode='auto')
         model = ConvNet(yEncoders, hyperparameters)
         model.fit(trainX, trainY, epochs = 100, batch_size = hyperparameters["batch_size"], validation_data = (devX, devY), callbacks=[overfitCallback])
         predY = model.predict(validationX)
-        validation_accuracy = accuracy_score(validationY, predY)
+
+        classPred = []
+        for j in range(len(validationY)):
+            numPredY = np.argmax(predY[j], axis = 1)
+            predYname = yEncoders[j].inverse_transform(numPredY)
+            classPred.append(predYname)
+        validation_accuracy = round(accuracy_score(validationY, classPred), 4)
 
         # record hyperparameters used
         save_df.loc[i, "embedding_dim"] = hyperparameters["embedding_dim"]

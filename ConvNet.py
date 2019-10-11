@@ -10,13 +10,13 @@ from utils import *
 import keras.optimizers
 import numpy as np
 import pandas as pd
-import pickle, os, sys, getopt
+import pickle, os, sys, getopt, time
 #warnings.filterwarnings("ignore")
 
-BATCH_SIZE = 256
-EMBEDDING_DIM = 10
-N_GRAM = 5
-MAX_NB_WORDS = 4**N_GRAM * 2
+batch_size = 512
+embedding_dim = 8
+n_gram = 5
+max_nb_words = 4**n_gram * 2
 
 def ConvNet(yEncoders, hyperparameters):
     '''
@@ -26,18 +26,19 @@ def ConvNet(yEncoders, hyperparameters):
         yEncoders -- fitted sklearn LabelEncoder that provides 1-to-1 mapping between HLA alleles and numbers
         hyperparameters -- dictionary of hyperparameters for the ConvNet
     Returns:
-        keras Model class for ConvNet
+        model -- keras Model class for ConvNet
     '''
     max_seq_length = hyperparameters["max_seq_length"]
     max_nb_words = hyperparameters["max_nb_words"]
     dropout = hyperparameters["dropout"]
     maxpool = hyperparameters["maxpool"]
-    stride1 = hyperparameters["stride1"]
-    stride2 = hyperparameters["stride2"]
+    kernel1 = hyperparameters["kernel1"]
+    kernel2 = hyperparameters["kernel2"]
     n_1 = hyperparameters["n_1"]
     n_2 = hyperparameters["n_2"]
     n_3 = hyperparameters["n_3"]
     embedding_dim = hyperparameters["embedding_dim"]
+    stride = hyperparameters["stride"]
 
     main_input = Input(shape = (8, max_seq_length), name = "main_input")
     x = TimeDistributed(Embedding(input_dim = max_nb_words + 1,
@@ -47,12 +48,12 @@ def ConvNet(yEncoders, hyperparameters):
     
     # convolution 1st layer
     x = TimeDistributed(BatchNormalization())(x)
-    x = TimeDistributed(Conv1D(n_1, stride1, activation = 'relu', input_shape = (embedding_dim, 1)))(x)
+    x = TimeDistributed(Conv1D(n_1, kernel1, strides = stride, activation = 'relu', input_shape = (embedding_dim, 1)))(x)
     x = TimeDistributed(MaxPooling1D(maxpool))(x)
     
     # convolution 2nd layer
     x = TimeDistributed(BatchNormalization())(x)
-    x = TimeDistributed(Conv1D(n_2, stride2, activation = 'relu'))(x)
+    x = TimeDistributed(Conv1D(n_2, kernel2, strides = stride, activation = 'relu'))(x)
     x = TimeDistributed(MaxPooling1D(maxpool))(x)
 
     x = TimeDistributed(Flatten())(x)
@@ -118,51 +119,52 @@ def main(argv):
     test = pd.read_csv(test_file, delimiter=" ", header = 0)
 
     # generate n-grams
-    MAX_SEQ_LENGTH = 0
+    max_seq_length = 0
     for i in range(8):
-        train.iloc[:, i] = [generate_n_grams(list(s), N_GRAM) for s in train.iloc[:, i]]
-        test.iloc[:, i] = [generate_n_grams(list(s), N_GRAM) for s in test.iloc[:, i]]
-        MAX_SEQ_LENGTH = max(max([len(s) for s in train.iloc[:, i]]), MAX_SEQ_LENGTH)
+        train.iloc[:, i] = [generate_n_grams(list(s), n_gram) for s in train.iloc[:, i]]
+        test.iloc[:, i] = [generate_n_grams(list(s), n_gram) for s in test.iloc[:, i]]
+        max_seq_length = max(max([len(s) for s in train.iloc[:, i]]), max_seq_length)
 
     # Map words and labels to numbers
     n_grams = []
     for i in range(8):
         n_grams += train.iloc[:, i].tolist()
-    tokenizer = Tokenizer(num_words = MAX_NB_WORDS)
+    tokenizer = Tokenizer(num_words = max_nb_words)
     tokenizer.fit_on_texts(n_grams)
-    pickle.dump(tokenizer, open(model_output + "/tokenizer.p", "wb"), protocol = 2)
+    pickle.dump(tokenizer, open(model_output + "/tokenizer_tune.p", "wb"), protocol = 2)
 
     trainY = train.iloc[:, 8:16]
     yEncoders = [LabelEncoder() for i in range(8)]
     for i in range(8):
         genename = trainY.columns[i]
         yEncoders[i].fit(trainY[genename])
-    pickle.dump(yEncoders, open(model_output + "/yEncoders.p", "wb"), protocol = 2)
+    pickle.dump(yEncoders, open(model_output + "/yEncoders_tune.p", "wb"), protocol = 2)
     
     # Generate training and test datasets
     train, validation = train_validation_split(train, p = 0.10)
-    trainX, trainY = generate_feature_label_pair(train, tokenizer, yEncoders, MAX_SEQ_LENGTH)
-    validationX, validationY = generate_feature_label_pair(validation, tokenizer, yEncoders, MAX_SEQ_LENGTH)
+    trainX, trainY = generate_feature_label_pair(train, tokenizer, yEncoders, max_seq_length)
+    validationX, validationY = generate_feature_label_pair(validation, tokenizer, yEncoders, max_seq_length)
     
     testY = []
-    testX = np.zeros((test.shape[0], 8, MAX_SEQ_LENGTH))
+    testX = np.zeros((test.shape[0], 8, max_seq_length))
     for i in range(8):
         x = tokenizer.texts_to_sequences(test.iloc[:, i])
-        testX[:, i, :] = pad_sequences(x, maxlen = MAX_SEQ_LENGTH, padding='post')
+        testX[:, i, :] = pad_sequences(x, maxlen = max_seq_length, padding='post')
         genename = test.columns[i + 8]
         testY.append(test[genename])
 
-    hyperparameters = {"max_seq_length": MAX_SEQ_LENGTH, "max_nb_words": MAX_NB_WORDS, "dropout": 0, 
-        "maxpool": 3, "stride1": 10, "stride2": 5, "n_1": 128, "n_2": 64, "stride1": 10, "stride2": 5,
-        "n_3": 64, "batch_size": batch_size}
+    hyperparameters = {"max_seq_length": max_seq_length, "max_nb_words": max_nb_words, "dropout": 0.5, "embedding_dim": embedding_dim,
+        "maxpool": 4, "kernel1": 4, "kernel2": 8, "n_1": 64, "n_2": 64, "n_3": 32, "batch_size": batch_size, "stride": 1}
     overfitCallback = EarlyStopping(monitor='val_loss',
                                 min_delta=0,
                                 patience=2,
                                 verbose=0, mode='auto')
     model = ConvNet(yEncoders, hyperparameters)
+    start_time = time.time()
     model.fit(trainX, trainY, epochs = 100, batch_size = hyperparameters["batch_size"], 
           validation_data = (validationX, validationY), callbacks=[overfitCallback])
-    model.save(model_output + "/convnet.h5")
+    print("{0} minutes".format(round((time.time() - start_time) / 60)))
+    model.save(model_output + "/convnet_tune.h5")
 
     # evaluate on test set
     predY = model.predict(testX)
@@ -175,7 +177,7 @@ def main(argv):
     print("Test accuracy: {0}".format(round(accuracy_score(testY, classPred), 4)))
 
     recallDf = calculate_recall(testY, classPred)
-    recallDf.to_csv(result_output + "/recall_by_allele0.csv", index = True)
+    recallDf.to_csv(result_output + "/recall_by_allele_tuned_0.csv", index = True)
 
 if __name__ == "__main__":
     try:
