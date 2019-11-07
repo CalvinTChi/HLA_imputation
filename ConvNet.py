@@ -16,7 +16,7 @@ import pickle, os, sys, getopt, time
 batch_size = 512
 embedding_dim = 8
 n_gram = 5
-max_nb_words = 4**n_gram * 2
+max_nb_words = 4**n_gram
 
 def ConvNet(yEncoders, hyperparameters):
     '''
