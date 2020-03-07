@@ -37,13 +37,13 @@ def main(argv):
         elif opt == "-r":
             result_directory = arg
 
-    model = load_model(model_directory + "/convnet.h5")
-    tokenizer = pickle.load(open(model_directory + "/tokenizer.p", "rb"))
-    yEncoders = pickle.load(open(model_directory + "/yEncoders.p", "rb"))
+    model = load_model("../" + model_directory + "/convnet_tune.h5")
+    tokenizer = pickle.load(open("../" + model_directory + "/tokenizer_tune.p", "rb"))
+    yEncoders = pickle.load(open("../" + model_directory + "/yEncoders_tune.p", "rb"))
 
     max_seq_length = int_shape(model.input)[2]
 
-    test = pd.read_csv(test_file, delimiter=" ", header = 0)
+    test = pd.read_csv("../" + test_file, delimiter=" ", header = 0)
     # generate n-grams
     for i in range(8):
         test.iloc[:, i] = [generate_n_grams(list(s), N_GRAM) for s in test.iloc[:, i]]
@@ -58,8 +58,8 @@ def main(argv):
         testY.append(test[genename])
     
     recallDfs = []
-    recallDfB = pd.read_csv(result_directory + "/recall_by_allele0.csv", index_col = 0)
-    recallDfB.to_csv(result_directory + "/recall_by_alleleB.csv", index = True)
+    recallDfB = pd.read_csv("../" + result_directory + "/recall_by_allele_tuned_0.csv", index_col = 0)
+    recallDfB.to_csv("../" + result_directory + "/recall_by_alleleB_tuned.csv", index = True)
 
     for i in range(B):
         print("bootstrap sample " + str(i + 1))
@@ -76,16 +76,16 @@ def main(argv):
             classPred.append(predYname)
         
         recallDf = calculate_recall(testYb, classPred)
-        recallDf.rename(columns = {'number':'number' + str(i + 1), 'num_correct': 'num_correct' + str(i + 1)}, 
+        recallDf.rename(columns = {'number':'number' + str(i + 1), 'number_correct': 'number_correct' + str(i + 1)}, 
                      inplace=True)
     
         recallDfs.append(recallDf)
 
         if (i + 1) % 100 == 0:
             recallDf_all = pd.concat(recallDfs, axis = 1)
-            recallDfB = pd.read_csv(result_directory + "/recall_by_alleleB.csv", index_col = 0)
+            recallDfB = pd.read_csv("../" + result_directory + "/recall_by_alleleB_tuned.csv", index_col = 0)
             recallDf_all = pd.merge(recallDfB, recallDf_all, left_index = True, right_index = True)
-            recallDf_all.to_csv(result_directory + "/recall_by_alleleB.csv", index = True)
+            recallDf_all.to_csv("../" + result_directory + "/recall_by_alleleB_tuned.csv", index = True)
             recallDfs = []
 
     #recallDf_all = pd.concat(recallDfs, axis = 1)

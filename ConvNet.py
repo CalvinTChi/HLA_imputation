@@ -1,5 +1,5 @@
 from keras.layers import Dense, Flatten, Embedding, Conv1D, MaxPooling1D, Activation, Input, Dropout, concatenate, TimeDistributed, Lambda
-from keras.layers.normalization import BatchNormalization
+from keras.layers import BatchNormalization
 from keras.preprocessing.sequence import pad_sequences
 from sklearn.preprocessing import LabelEncoder
 from keras.preprocessing.text import Tokenizer
@@ -10,6 +10,7 @@ from utils import *
 import keras.optimizers
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 import pickle, os, sys, getopt, time
 #warnings.filterwarnings("ignore")
 
@@ -47,17 +48,16 @@ def ConvNet(yEncoders, hyperparameters):
                                   trainable = True))(main_input)
     
     # convolution 1st layer
-    x = TimeDistributed(BatchNormalization())(x)
     x = TimeDistributed(Conv1D(n_1, kernel1, strides = stride, activation = 'relu', input_shape = (embedding_dim, 1)))(x)
     x = TimeDistributed(MaxPooling1D(maxpool))(x)
     
     # convolution 2nd layer
-    x = TimeDistributed(BatchNormalization())(x)
+    x = TimeDistributed(BatchNormalization(momentum = 0.80))(x)
     x = TimeDistributed(Conv1D(n_2, kernel2, strides = stride, activation = 'relu'))(x)
     x = TimeDistributed(MaxPooling1D(maxpool))(x)
 
     x = TimeDistributed(Flatten())(x)
-    x = TimeDistributed(BatchNormalization())(x)
+    x = TimeDistributed(BatchNormalization(momentum = 0.80))(x)
     x = TimeDistributed(Dropout(rate = dropout))(x)
     
     dense1 = [Lambda(lambda x, ind: x[:, ind, :], arguments={'ind': i})(x) for i in range(8)]
@@ -110,13 +110,13 @@ def main(argv):
             result_output = arg
 
     # create output directories if do not exist
-    if not os.path.exists(model_output):
-        os.makedirs(model_output)
-    if not os.path.exists(result_output):
-        os.makedirs(result_output)
+    if not os.path.exists("../" + model_output):
+        os.makedirs("../" + model_output)
+    if not os.path.exists("../" + result_output):
+        os.makedirs("../" + result_output)
 
-    train = pd.read_csv(train_file, delimiter=" ", header = 0)
-    test = pd.read_csv(test_file, delimiter=" ", header = 0)
+    train = pd.read_csv("../" + train_file, delimiter=" ", header = 0)
+    test = pd.read_csv("../" + test_file, delimiter=" ", header = 0)
 
     # generate n-grams
     max_seq_length = 0
@@ -131,14 +131,14 @@ def main(argv):
         n_grams += train.iloc[:, i].tolist()
     tokenizer = Tokenizer(num_words = max_nb_words)
     tokenizer.fit_on_texts(n_grams)
-    pickle.dump(tokenizer, open(model_output + "/tokenizer_tune.p", "wb"), protocol = 2)
+    pickle.dump(tokenizer, open("../" + model_output + "/tokenizer_tune.p", "wb"), protocol = 2)
 
     trainY = train.iloc[:, 8:16]
     yEncoders = [LabelEncoder() for i in range(8)]
     for i in range(8):
         genename = trainY.columns[i]
         yEncoders[i].fit(trainY[genename])
-    pickle.dump(yEncoders, open(model_output + "/yEncoders_tune.p", "wb"), protocol = 2)
+    pickle.dump(yEncoders, open("../" + model_output + "/yEncoders_tune.p", "wb"), protocol = 2)
     
     # Generate training and test datasets
     train, validation = train_validation_split(train, p = 0.10)
@@ -164,7 +164,7 @@ def main(argv):
     model.fit(trainX, trainY, epochs = 100, batch_size = hyperparameters["batch_size"], 
           validation_data = (validationX, validationY), callbacks=[overfitCallback])
     print("{0} minutes".format(round((time.time() - start_time) / 60)))
-    model.save(model_output + "/convnet_tune.h5")
+    model.save("../" + model_output + "/convnet_tune.h5")
 
     # evaluate on test set
     predY = model.predict(testX)
@@ -177,7 +177,7 @@ def main(argv):
     print("Test accuracy: {0}".format(round(accuracy_score(testY, classPred), 4)))
 
     recallDf = calculate_recall(testY, classPred)
-    recallDf.to_csv(result_output + "/recall_by_allele_tuned_0.csv", index = True)
+    recallDf.to_csv("../" + result_output + "/recall_by_allele_tuned_0.csv", index = True)
 
 if __name__ == "__main__":
     try:

@@ -39,21 +39,20 @@ def accuracy_score(classY, classPred):
     return float(num_correct) / (len(classY[0]) * 8)
 
 # @param predY: list of predicted class as integers
-# @param testY: list of true class as integers
-# @yEncoder: sklearn.preprocessing.LabelEncoder is a mapping between class names and numbers
+# @param classY: list of true class as integers
 def calculate_recall(classY, classPred):
     classes = []
-    for i in range(len(testY)):
-        classes += list(np.unique(testY[i]))
+    for i in range(len(classY)):
+        classes += list(np.unique(classY[i]))
     recallDf = pd.DataFrame(0, index = classes,
         columns = ["number", "number_correct"])
-    for i in range(len(testY)):
-        alleleClass = np.unique(testY[i])
+    for i in range(len(classY)):
+        alleleClass = np.unique(classY[i])
         for j in range(len(alleleClass)):
             allele = alleleClass[j]
             alleleIdx = np.where(classY[i] == allele)[0]
             recallDf.loc[allele, "number"] = len(alleleIdx)
-            recallDf.loc[allele, "num_correct"] = len(np.intersect1d(alleleIdx, np.where(classPred[i] == allele)[0]))
+            recallDf.loc[allele, "number_correct"] = len(np.intersect1d(alleleIdx, np.where(classPred[i] == allele)[0]))
     #recallDf["percent"] = recallDf["num_correct"] / recallDf["number"]
     recallDf = recallDf.sort_values(by = ["number"], ascending = False)
     return recallDf
